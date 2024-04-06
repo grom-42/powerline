@@ -67,19 +67,45 @@ def source_tmux_file(fname):
 	run_tmux_command('source', fname)
 
 
-NON_DIGITS = re.compile('[^0-9]+')
-DIGITS = re.compile('[0-9]+')
-NON_LETTERS = re.compile('[^a-z]+')
+def build_tmux_output_re():
+	pattern = '^' # begin of tmux version output
 
+	pattern += '\s*' # optionnal undefined number of spaces/tabs
+	pattern += '\w+' # tmux binary name (ie: "tmux")
+	pattern += '\s+' # undefined number of spaces/tabs
+
+	pattern += '(?P<version>' # named group for VERSION (ie: "3.4", "next-3.4", "master", ...)
+
+	pattern += '(?:'                   # non-capturing group for major.minor part
+	pattern += '(?:.*?-)?'             # optionnal version prefix (ie: "next-")
+	pattern += '(?P<major>\d+)'        # major part of version (ie: "3")
+	pattern += '(?:\.(?P<minor>\d+))?' # optional minor part of version (ie: "4")
+	pattern += ')'                     # end of non-capturing group
+
+	pattern += '|'                     # or
+
+	pattern += 'master'                # allow "master" as a valid version
+
+	pattern += ')'            # end of VERSION group
+
+	pattern += '\s*'              # optionnal undefined number of spaces/tabs
+	pattern += '(?P<suffix>\w+)?' # suffix
+	pattern += '\s*'              # optionnal undefined number of spaces/tabs
+
+	pattern += '$'            # end of tmux version output
+
+	return re.compile(pattern)
+
+TMUX_OUTPUT_RE = build_tmux_output_re()
 
 def get_tmux_version(pl):
 	version_string = get_tmux_output(pl, '-V')
-	_, version_string = version_string.split(' ')
-	version_string = version_string.strip()
-	if version_string == 'master':
-		return TmuxVersionInfo(float('inf'), 0, version_string)
-	major, minor = version_string.split('.')
-	major = NON_DIGITS.subn('', major)[0]
-	suffix = DIGITS.subn('', minor)[0] or None
-	minor = NON_DIGITS.subn('', minor)[0]
+
+	m = TMUX_OUTPUT_RE.match(version_string)
+	if m.group('version') == 'master':
+	    return TmuxVersionInfo(float('inf'), 0, m.group('version'))
+	major = m.group('major')
+	minor = m.group('minor')
+	minor = 0 if minor is None else minor
+	suffix = m.group('suffix')
 	return TmuxVersionInfo(int(major), int(minor), suffix)
